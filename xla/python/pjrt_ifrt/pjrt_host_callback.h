@@ -21,8 +21,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,6 +54,7 @@ class PjRtHostSendAndRecvLoadedHostCallback
 
   Client* client() const override { return client_; }
 
+  absl::StatusOr<void*> py_callback() const override;
   absl::StatusOr<std::string> Serialize() const override;
 
   static char ID;  // NOLINT

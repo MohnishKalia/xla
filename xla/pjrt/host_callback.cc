@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape_util.h"
@@ -170,5 +171,10 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
   return context;
 }
+
+ffi::TypeId FfiLoadedHostCallbacks::id = {};
+// TODO(dsuo): Update this when cl/738521675 lands.
+XLA_FFI_REGISTER_TYPE(ffi::GetXlaFfiApi(), "FfiLoadedHostCallbacks",
+                      &FfiLoadedHostCallbacks::id);
 
 }  // namespace xla

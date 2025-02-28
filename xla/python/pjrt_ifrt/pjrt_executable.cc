@@ -31,6 +31,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/ffi/execution_context.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -549,10 +551,21 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
 
   auto context = std::make_shared<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
+  auto ffi_callbacks = std::make_shared<xla::FfiLoadedHostCallbacks>();
+  auto callbacks = std::make_shared<std::vector<void*>>();
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
       platform_id == RocmId() || platform_id == SyclId()) {
-    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
+        xla::FfiLoadedHostCallbacks::id.type_id);
+    callbacks->reserve(all_loaded_host_callbacks_->size());
+    for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
+      TF_ASSIGN_OR_RETURN(void* callback, loaded_host_callback->py_callback());
+      callbacks->push_back(callback);
+    }
+    ffi_callbacks->callbacks = callbacks->data();
+    ffi_callbacks->num_callbacks = callbacks->size();
+    CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
   }
 
@@ -616,7 +629,9 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     // the execution finishes.
     status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
                     host_callback_states = std::move(host_callback_states),
-                    context = std::move(context)](absl::Status) mutable {
+                    context = std::move(context),
+                    ffi_callbacks = std::move(ffi_callbacks),
+                    callbacks = std::move(callbacks)](absl::Status) mutable {
       all_loaded_host_callbacks.reset();
     });
   }

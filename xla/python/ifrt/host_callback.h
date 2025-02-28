@@ -56,6 +56,10 @@ class LoadedHostCallback
  public:
   virtual Client* client() const = 0;
 
+  // Returns an opaque pointer to the underlying PyObject host callback, if
+  // available. Not all implementations may have a Python host callback.
+  virtual absl::StatusOr<void*> py_callback() const = 0;
+
   // Returns a serialized host callback.
   //
   // The implementation may return an error if this `LoadedHostCallback` is not

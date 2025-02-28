@@ -18,12 +18,18 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace ifrt {
 
 char PjRtHostSendAndRecvLoadedHostCallback::ID = 0;
 
+absl::StatusOr<void*> PjRtHostSendAndRecvLoadedHostCallback::py_callback()
+    const {
+  return Unimplemented(
+      "PjRtHostSendAndRecvLoadedHostCallback::py_callback() is not supported");
+}
 absl::StatusOr<std::string> PjRtHostSendAndRecvLoadedHostCallback::Serialize()
     const {
   return Unimplemented(

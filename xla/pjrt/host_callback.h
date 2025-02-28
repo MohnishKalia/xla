@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/ffi/api/ffi.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -169,6 +170,15 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
     std::vector<SendCallback>& send_callbacks,
     std::vector<RecvCallback>& recv_callbacks,
     bool use_major_to_minor_data_layout_for_callbacks);
+
+// TODO(dsuo): Where's a better home for this? This is specifically for Python
+// loaded host callbacks and I want py_client_gpu.cc, py_client_cpu.cc, and
+// pjrt_ifrt/pjrt_executable.cc to be able to see it.
+struct FfiLoadedHostCallbacks {
+  static ffi::TypeId id;
+  void** callbacks;
+  int8_t num_callbacks;
+};
 
 }  // namespace xla
 

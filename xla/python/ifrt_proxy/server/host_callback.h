@@ -108,6 +108,11 @@ class RemoteLoadedHostCallback
 
   ~RemoteLoadedHostCallback() override;
 
+  absl::StatusOr<void*> py_callback() const override {
+    return absl::UnimplementedError(
+        "RemoteLoadedHostCallback does not support Python host callbacks.");
+  }
+
   // Serializes the remote host callback instance. The returned string can be
   // deserialized into `RmeoteLoadedHostCallback` using `CreateFromSerialized`.
   absl::StatusOr<std::string> Serialize() const override;
