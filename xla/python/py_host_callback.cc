@@ -120,6 +120,14 @@ absl::StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
 
 }  // namespace
 
+PyFfiLoadedHostCallback::~PyFfiLoadedHostCallback() {
+  // The destructor may be called without GIL held. In that case, we defer it
+  // to GlobalPyRefManager.
+  std::vector<nb::object> objects;
+  objects.push_back(std::move(callable_));
+  GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
+}
+
 absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
 PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                 nb::callable callable,
@@ -146,7 +154,7 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
 
 absl::StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
   return Unimplemented(
-      "PyHostSendAndRecvLoadedHostCallback serialization is not supported");
+      "PyCpuLoadedHostCallback serialization is not supported");
 }
 
 absl::StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>
@@ -220,6 +228,11 @@ PyHostSendAndRecvLoadedHostCallback::~PyHostSendAndRecvLoadedHostCallback() {
       absl::MakeSpan(static_cast<nb::object*>(&callable_), 1));
   GlobalPyRefManager()->AddGarbage(
       absl::MakeSpan(static_cast<nb::object*>(&serializer_), 1));
+}
+
+absl::StatusOr<void*> PyHostSendAndRecvLoadedHostCallback::py_callback() const {
+  return Unimplemented(
+      "PyHostSendAndRecvLoadedHostCallback::py_callback() is not supported");
 }
 
 absl::StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize()

@@ -331,6 +331,7 @@ class MockLoadedHostCallback final
     : public llvm::RTTIExtends<MockLoadedHostCallback, LoadedHostCallback> {
  public:
   MOCK_METHOD(Client*, client, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<void*>, py_callback, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
 
   static char ID;  // NOLINT
