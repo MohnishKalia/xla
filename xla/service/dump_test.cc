@@ -56,7 +56,7 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
   EXPECT_TRUE(absl::StrContains(data, "{...}"));
@@ -84,10 +84,13 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
   EXPECT_TRUE(!absl::StrContains(data, "{...}"));
+  std::string config_data;
+  EXPECT_TRUE(ReadFileToString(env, paths[1], &config_data).ok());
+  EXPECT_TRUE(absl::StrContains(config_data, "replica_count: 1"));
 }
 
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
@@ -174,7 +177,7 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 2);
+  EXPECT_EQ(paths.size(), 3);
 
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
@@ -241,9 +244,10 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
 
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);
 
   EXPECT_TRUE(absl::StrContains(paths[0], ".cl_"));
+  EXPECT_TRUE(absl::StrContains(paths[1], ".config"));
 }
 
 TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
