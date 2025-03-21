@@ -655,6 +655,77 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
+// Test that A/C + B/C => (A+B)/C
+TEST_F(AlgebraicSimplifierTest, DistDivScalar) {
+  auto m = CreateNewVerifiedModule();
+  Shape r2f32 = ShapeUtil::MakeShape(S32, {46, 132});
+  // Shape r2f32_B = ShapeUtil::MakeShape(S32, {56, 192});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "paramA"));
+  HloInstruction* paramB = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "paramB"));
+  HloInstruction* constC = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
+  HloInstruction* div0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramA, constC));
+  HloInstruction* div1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramB, constC));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, div0, div1));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Add(m::Divide(m::Parameter(0), m::Const(constC)),
+                           m::Divide(m::Parameter(1), m::Const(constC)))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
+                           m::Const(constC))));
+}
+
+// Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).
+// TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
+//   auto m = CreateNewVerifiedModule();
+//   Shape r2f32 = ShapeUtil::MakeShape(F32, {42, 123});
+//   HloComputation::Builder builder(TestName());
+//   HloInstruction* param0 = builder.AddInstruction(
+//       HloInstruction::CreateParameter(0, r2f32, "param0"));
+//   HloInstruction* param1 = builder.AddInstruction(
+//       HloInstruction::CreateParameter(1, r2f32, "param1"));
+//   HloInstruction* param2 = builder.AddInstruction(
+//       HloInstruction::CreateParameter(2, r2f32, "param2"));
+//   HloInstruction* param3 = builder.AddInstruction(
+//       HloInstruction::CreateParameter(3, r2f32, "param3"));
+//   HloInstruction* div0 = builder.AddInstruction(
+//       HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param0, param1));
+//   HloInstruction* div1 = builder.AddInstruction(
+//       HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param2, param3));
+//   builder.AddInstruction(
+//       HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, div0, div1));
+
+//   auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+
+//   EXPECT_THAT(
+//       computation->root_instruction(),
+//       GmockMatch(m::Divide(m::Divide(m::Parameter(0), m::Parameter(1)),
+//                            m::Divide(m::Parameter(2), m::Parameter(3)))));
+
+//   AlgebraicSimplifier simplifier(default_options_);
+//   ASSERT_TRUE(simplifier.Run(m.get()).value());
+
+//   EXPECT_THAT(
+//       computation->root_instruction(),
+//       GmockMatch(m::Divide(m::Multiply(m::Parameter(0), m::Parameter(3)),
+//                            m::Multiply(m::Parameter(1), m::Parameter(2)))));
+// }
+
 TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
   const char* kModuleStr = R"(
     HloModule m

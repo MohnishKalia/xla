@@ -1011,6 +1011,24 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                  c));
   }
 
+  // MP2 Kalia: A/C + B/C => (A+B)/C
+  VLOG(10) << "MP2 Kalia: trying transform [A/C + B/C => (A+B)/C]";
+  // HloInstruction *b, *c;
+  if ((Match(lhs, m::Divide(m::Op(&a), m::Op(&c))) &&
+        Match(rhs, m::Divide(m::Op(&b), m::Op().Is(c)))) &&
+      // Make sure we would decrease the number of divs.
+      (lhs->user_count() == 1 && rhs->user_count() == 1) &&
+      (ShapeUtil::ElementIsIntegral(add->shape()) ||
+       options_.enable_floats_are_real() || IsAllFpConstantPowerOf2(c))) {
+    VLOG(10) << "MP2 Kalia: Applied transform [A/C + B/C => (A+B)/C]!";
+    return ReplaceWithNewInstruction(
+        add, HloInstruction::CreateBinary(
+                 add->shape(), HloOpcode::kDivide,
+                 lhs->AddInstruction(HloInstruction::CreateBinary(
+                     add->shape(), HloOpcode::kAdd, a, b)),
+                 c));
+  }
+
   if (options_.is_layout_sensitive()) {
     return absl::OkStatus();
   }
