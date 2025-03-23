@@ -658,19 +658,30 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
 // Test that A/C + B/C => (A+B)/C
 TEST_F(AlgebraicSimplifierTest, DistDivScalar) {
   auto m = CreateNewVerifiedModule();
-  Shape r2f32 = ShapeUtil::MakeShape(S32, {46, 132});
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {46, 132});
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
   // Shape r2f32_B = ShapeUtil::MakeShape(S32, {56, 192});
   HloComputation::Builder builder(TestName());
   HloInstruction* paramA = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "paramA"));
   HloInstruction* paramB = builder.AddInstruction(
       HloInstruction::CreateParameter(1, r2f32, "paramB"));
+  // HloInstruction* three = builder.AddInstruction(
+  //     HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
   HloInstruction* constC = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
+      HloInstruction::CreateParameter(2, scalar_shape, "paramC"));
+  HloInstruction* paramC = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r2f32, constC, {}));
+  // HloInstruction* paramC = builder.AddInstruction(
+  //     HloInstruction::CreateParameter(2, r2f32, "paramC"));
+  // HloInstruction* constC = builder.AddInstruction(
+  //     HloInstruction::CreateBroadcast(r2f32, paramC, {1}));
+      // HloInstruction::CreateParameter(2, scalar_shape, "paramC"));
+      // HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
   HloInstruction* div0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramA, constC));
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramA, paramC));
   HloInstruction* div1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramB, constC));
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, paramB, paramC));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, div0, div1));
 
@@ -678,16 +689,18 @@ TEST_F(AlgebraicSimplifierTest, DistDivScalar) {
 
   EXPECT_THAT(
       computation->root_instruction(),
-      GmockMatch(m::Add(m::Divide(m::Parameter(0), m::Const(constC)),
-                           m::Divide(m::Parameter(1), m::Const(constC)))));
+      GmockMatch(m::Add(m::Divide(m::Parameter(0), m::Broadcast(m::Parameter(2))),
+                           m::Divide(m::Parameter(1), m::Broadcast(m::Parameter(2))))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).value());
 
+  // std::cout << "MP2 Kalia: first check passed" << std::endl;
+
   EXPECT_THAT(
       computation->root_instruction(),
-      GmockMatch(m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
-                           m::Const(constC))));
+      GmockMatch(m::Divide(m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::Broadcast(m::Parameter(2)))));
 }
 
 // Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).

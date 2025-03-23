@@ -29,6 +29,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -1013,14 +1014,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
 
   // MP2 Kalia: A/C + B/C => (A+B)/C
   VLOG(10) << "MP2 Kalia: trying transform [A/C + B/C => (A+B)/C]";
+  // std::cout << "MP2 Kalia: trying transform [A/C + B/C => (A+B)/C]" << std::endl;
   // HloInstruction *b, *c;
   if ((Match(lhs, m::Divide(m::Op(&a), m::Op(&c))) &&
-        Match(rhs, m::Divide(m::Op(&b), m::Op().Is(c)))) &&
-      // Make sure we would decrease the number of divs.
-      (lhs->user_count() == 1 && rhs->user_count() == 1) &&
-      (ShapeUtil::ElementIsIntegral(add->shape()) ||
-       options_.enable_floats_are_real() || IsAllFpConstantPowerOf2(c))) {
+        Match(rhs, m::Divide(m::Op(&b), m::Op().Is(c))))) {
     VLOG(10) << "MP2 Kalia: Applied transform [A/C + B/C => (A+B)/C]!";
+    // std::cout << "MP2 Kalia: Applied transform [A/C + B/C => (A+B)/C]!" << std::endl;
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(
                  add->shape(), HloOpcode::kDivide,
