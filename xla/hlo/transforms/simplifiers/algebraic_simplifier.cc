@@ -2171,6 +2171,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
     return ReplaceInstruction(sub, MakeScalarLike(sub, 0));
   }
 
+  HloInstruction *a, *b, *c;
+  VLOG(10) << "MP2 Kalia: trying transform [square(A + B) - (A + B) . C => (A + B) . (A + B - C)]";
+  if (Match(lhs, m::Dot(m::Add(m::Op(&a), m::Op(&b)), m::Add(m::Op().Is(&a), m::Op().Is(&b)))) && 
+      Match(rhs, m::Dot(m::Add(m::Op().Is(&a), m::Op().Is(&b)), m::Op(&c)))) {
+    VLOG(10) << "MP2 Kalia: found transform [square(A + B) - (A + B) . C => (A + B) . (A + B - C)]!";
+    HloInstruction* abAdd = sub->AddInstruction(HloInstruction::CreateBinary(sub->shape(), HloOpcode::kAdd, a, b));
+    HloInstruction* abSubC = sub->AddInstruction(HloInstruction::CreateBinary(sub->shape(), HloOpcode::kSubtract, abAdd, c));
+    return ReplaceWithNewInstruction(sub, HloInstruction::CreateDot(sub->shape(), abAdd, abSubC));
+  }
+
   return absl::OkStatus();
 }
 namespace {
@@ -4095,6 +4105,34 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   TF_ASSIGN_OR_RETURN(bool moved_param_to_rhs, MoveDotParamToRhs(dot_cast));
   if (moved_param_to_rhs) {
     return absl::OkStatus();
+  }
+
+  HloInstruction *a, *b;
+  VLOG(10) << "MP2 Kalia: trying transform [div(1/A) . div(1/(A . B)) => square(div(1/A)) / B]";
+  if (Match(lhs, m::Divide(m::ConstantScalar(1), m::Op(&a))) && 
+      Match(rhs, m::Divide(m::ConstantScalar(1), m::Dot(m::Op().Is(&a), m::Op(&b))))) {
+    VLOG(10) << "MP2 Kalia: found transform [div(1/A) . div(1/(A . B)) => square(div(1/A)) / B]!";
+    HloInstruction* recipA = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDivide, MakeScalarLike(lhs->shape(), 1), a));
+    HloInstruction* squareRecipA = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDot, recipA, recipA));
+    HloInstruction* squareDivB = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDivide, squareRecipA, b));
+    return ReplaceWithNewInstruction(sub, squareDivB);
+  }
+
+  HloInstruction *c;
+  VLOG(10) << "MP2 Kalia: trying transform [(A . Reduce(B)) . (Reduce(B) . C) => A . square(Reduce(B)) . C]";
+  if (Match(lhs, m::Dot(m::Op(&a), m::Reduce(&b))) && 
+      Match(rhs, m::Dot(m::Op().Is(&b), m::Op(&c)))) {
+    VLOG(10) << "MP2 Kalia: found transform [(A . Reduce(B)) . (Reduce(B) . C) => A . square(Reduce(B)) . C]!";
+    HloInstruction* squareB = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDot, b, b));
+    HloInstruction* squareDotC = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDot, squareB, c));
+    HloInstruction* aDotSquare = sub->AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDot, a, squareDotC));
+    return ReplaceWithNewInstruction(sub, aDotSquare);
   }
 
   return absl::OkStatus();
