@@ -703,6 +703,127 @@ TEST_F(AlgebraicSimplifierTest, DistDivScalar) {
                   m::Broadcast(m::Parameter(2)))));
 }
 
+// Test that [A . B, A . C] => split(A . concat(B, C))
+TEST_F(AlgebraicSimplifierTest, MP2MatmulTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4,6] parameter(0)
+      b = f32[6,4] parameter(1)
+      c = f32[6,5] parameter(2)
+      x = f32[4,4] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      y = f32[4,5] dot(a, c), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT div0 = tuple(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Tuple(m::Dot(m::Parameter(0), m::Parameter(1)),
+                        m::Dot(m::Parameter(0), m::Parameter(2)))));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+                        
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Tuple(m::Dot(m::Parameter(0), m::Parameter(1)),
+                        m::Dot(m::Parameter(0), m::Parameter(2)))));
+}
+
+// Test that div(1/A) * div(1/(A * B)) => square(div(1/A)) / B
+TEST_F(AlgebraicSimplifierTest, MP2RecipTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[3,5] parameter(0)
+      b = f32[3,5] parameter(1)
+      c0 = f32[] constant(1.0)
+      b0 = f32[3,5] broadcast(c0), dimensions={}
+      div0 = f32[3,5] divide(b0, a)
+      mul0 = f32[3,5] multiply(a, b)
+      div1 = f32[3,5] divide(b0, mul0)
+      ROOT mul1 = f32[3,5] multiply(div0, div1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Multiply(m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Parameter(0)),
+                      m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Multiply(m::Parameter(0), m::Parameter(1))))));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Divide(m::Multiply(m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Parameter(0)), 
+                                m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Parameter(0))),
+                          m::Parameter(1))));
+}
+
+// Test that (A * Reduce(B)) * (Reduce(B) * C) => A * square(Reduce(B)) * C
+TEST_F(AlgebraicSimplifierTest, MP2ReduceTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      a = f32[7,4] parameter(0)
+      b = f32[7,4,3] parameter(1)
+      c = f32[7,4] parameter(2)
+      dummy = f32[] constant(0)
+      rB = f32[7,4] reduce(b, dummy), dimensions={2}, to_apply=add
+      mul0 = f32[7,4] multiply(a, rB)
+      mul1 = f32[7,4] multiply(rB, c)
+      ROOT mul2 = f32[7,4] multiply(mul0, mul1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Multiply(m::Multiply(m::Parameter(0), m::Reduce(m::Parameter(1), m::ConstantScalar(0))),
+                            m::Multiply(m::Reduce(m::Parameter(1), m::ConstantScalar(0)), m::Parameter(2)))));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Multiply(m::Parameter(0),
+                            m::Multiply(m::Multiply(m::Reduce(m::Parameter(1), m::ConstantScalar(0)), m::Reduce(m::Parameter(1), m::ConstantScalar(0))),
+                                        m::Parameter(2)))));
+}
+
+// Test that square(A + B) - (A + B) * C => (A + B) * (A + B - C)
+TEST_F(AlgebraicSimplifierTest, MP2SubTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    
+    test {
+      a = f32[3,5] parameter(0)
+      b = f32[3,5] parameter(1)
+      c = f32[3,5] parameter(2)
+      add0 = f32[3,5] add(a, b)
+      mul0 = f32[3,5] multiply(add0, add0)
+      mul1 = f32[3,5] multiply(add0, c)
+      ROOT sub0 = f32[3,5] subtract(mul0, mul1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Subtract(m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)), m::Add(m::Parameter(0), m::Parameter(1))),
+                            m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)), m::Parameter(2)))));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+    m->entry_computation()->root_instruction(),
+    GmockMatch(m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)),
+                            m::Subtract(m::Add(m::Parameter(0), m::Parameter(1)), m::Parameter(2)))));
+}
+
 // Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).
 // TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
 //   auto m = CreateNewVerifiedModule();
