@@ -26,6 +26,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <vector>
+// #include <iostream>
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
@@ -713,7 +714,7 @@ TEST_F(AlgebraicSimplifierTest, MP2MatmulTest) {
       c = f32[6,5] parameter(2)
       x = f32[4,4] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       y = f32[4,5] dot(a, c), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-      ROOT div0 = tuple(x, y)
+      ROOT matmul0 = tuple(x, y)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -726,8 +727,8 @@ TEST_F(AlgebraicSimplifierTest, MP2MatmulTest) {
                         
   EXPECT_THAT(
     m->entry_computation()->root_instruction(),
-    GmockMatch(m::Tuple(m::Dot(m::Parameter(0), m::Parameter(1)),
-                        m::Dot(m::Parameter(0), m::Parameter(2)))));
+    GmockMatch(m::Tuple(m::Slice(m::Dot(m::Parameter(0), m::Concatenate(m::Parameter(1), m::Parameter(2)))),
+                        m::Slice(m::Dot(m::Parameter(0), m::Concatenate(m::Parameter(1), m::Parameter(2)))))));
 }
 
 // Test that div(1/A) * div(1/(A * B)) => square(div(1/A)) / B
