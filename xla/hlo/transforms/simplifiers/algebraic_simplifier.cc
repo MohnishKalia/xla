@@ -1017,7 +1017,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   // std::cout << "MP2 Kalia: trying transform [A/C + B/C => (A+B)/C]" << std::endl;
   // HloInstruction *b, *c;
   if ((Match(lhs, m::Divide(m::Op(&a), m::Op(&c))) &&
-        Match(rhs, m::Divide(m::Op(&b), m::Op().Is(c))))) {
+        Match(rhs, m::Divide(m::Op(&b), m::Op().Is(c)))) &&
+        a->shape() == b->shape()) {
     VLOG(10) << "MP2 Kalia: Applied transform [A/C + B/C => (A+B)/C]!";
     // std::cout << "MP2 Kalia: Applied transform [A/C + B/C => (A+B)/C]!" << std::endl;
     return ReplaceWithNewInstruction(
@@ -2177,7 +2178,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
   if (Match(lhs, m::Multiply(m::Op(&squareL), m::Op(&squareR))) &&
       Match(squareL, m::Add(m::Op(&a), m::Op(&b))) && 
       Match(squareR, m::Add(m::Op().Is(a), m::Op().Is(b))) && 
-      Match(rhs, m::Multiply(m::Add(m::Op().Is(a), m::Op().Is(b)), m::Op(&c)))) {
+      Match(rhs, m::Multiply(m::Add(m::Op().Is(a), m::Op().Is(b)), m::Op(&c))) &&
+      a->shape() == b->shape() && b->shape() == c->shape()) {
     VLOG(10) << "MP2 Kalia: found transform [square(A + B) - (A + B) . C => (A + B) . (A + B - C)]!";
     // std::cout << "MP2 Kalia: found transform [square(A + B) - (A + B) . C => (A + B) . (A + B - C)]!" << std::endl;
     HloInstruction* abAdd = sub->AddInstruction(HloInstruction::CreateBinary(sub->shape(), HloOpcode::kAdd, a, b));
@@ -5038,7 +5040,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
   HloInstruction *b;
   VLOG(10) << "MP2 Kalia: trying transform [div(1/A) * div(1/(A * B)) => square(div(1/A)) / B]";
   if (Match(lhs, m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Op(&a))) && 
-      Match(rhs, m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Multiply(m::Op().Is(a), m::Op(&b))))) {
+      Match(rhs, m::Divide(m::Broadcast(m::ConstantScalar(1.0)), m::Multiply(m::Op().Is(a), m::Op(&b)))) &&
+      a->shape() == b->shape()) {
     VLOG(10) << "MP2 Kalia: found transform [div(1/A) * div(1/(A * B)) => square(div(1/A)) / B]!";
     HloInstruction* recipA = multiply->AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kDivide, MakeScalarLike(lhs, 1.0), a));
@@ -5051,7 +5054,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
   VLOG(10) << "MP2 Kalia: trying transform [(A * Reduce(B)) * (Reduce(B) * C) => A * square(Reduce(B)) * C]";
   // Could restrict reduce but not able to parse the apply= fn to make sure its a "summing" or add fn
   if (Match(lhs, m::Multiply(m::Op(&a), m::Reduce(&b))) && 
-      Match(rhs, m::Multiply(m::Op().Is(b), m::Op(&c)))) {
+      Match(rhs, m::Multiply(m::Op().Is(b), m::Op(&c))) &&
+      a->shape() == c->shape()) {
     VLOG(10) << "MP2 Kalia: found transform [(A * Reduce(B)) * (Reduce(B) * C) => A * square(Reduce(B)) * C]!";
     HloInstruction* squareB = multiply->AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kMultiply, b, b));
